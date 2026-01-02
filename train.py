@@ -42,6 +42,20 @@ class CartiDataset(Dataset):
         return x, y
 
 
+class FeedForward(nn.Module):
+    def __init__(self, embed_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(embed_dim, 4 * embed_dim),
+            nn.GELU(),
+            nn.Linear(4 * embed_dim, embed_dim),
+            nn.Dropout(dropout),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
 class SelfAttentionHead(nn.Module):
     def __init__(self, embed_dim, head_dim):
         super().__init__()
@@ -96,17 +110,34 @@ class MultiHeadAttention(nn.Module):
         return out
 
 
+class TransformerBlock(nn.Module):
+    def __init__(self, embed_dim, n_heads):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(embed_dim)
+        self.attn = MultiHeadAttention(embed_dim, n_heads)
+
+        self.ln2 = nn.LayerNorm(embed_dim)
+        self.ffn = FeedForward(embed_dim)
+
+    def forward(self, x):
+        x = x + self.attn(self.ln1(x))
+        x = x + self.ffn(self.ln2(x))
+        return x
+
+
 class Transformer(nn.Module):
-    def __init__(self, vocab_size, embed_dim, block_size, n_heads):
+    def __init__(self, vocab_size, embed_dim, block_size, n_heads, n_layers):
         super().__init__()
         self.block_size = block_size
 
         self.tok_embed = nn.Embedding(vocab_size, embed_dim)
         self.pos_embed = nn.Embedding(block_size, embed_dim)
 
-        self.ln = nn.LayerNorm(embed_dim)
-        self.attn = MultiHeadAttention(embed_dim, n_heads)
+        self.blocks = nn.ModuleList(
+            [TransformerBlock(embed_dim, n_heads) for _ in range(n_layers)]
+        )
 
+        self.ln_f = nn.LayerNorm(embed_dim)
         self.fc = nn.Linear(embed_dim, vocab_size)
 
     def forward(self, x, targets=None):
@@ -119,8 +150,10 @@ class Transformer(nn.Module):
 
         x = tok_emb + pos_emb
 
-        x = x + self.attn(self.ln(x))
+        for block in self.blocks:
+            x = block(x)
 
+        x = self.ln_f(x)
         logits = self.fc(x)
 
         loss = None
@@ -155,13 +188,18 @@ if __name__ == "__main__":
     dataloader = DataLoader(dataset, batch_size=8, shuffle=True)
 
     model = Transformer(
-        vocab_size=len(tokenizer), embed_dim=embed_dim, block_size=block_size, n_heads=4
+        vocab_size=len(tokenizer),
+        embed_dim=embed_dim,
+        block_size=block_size,
+        n_heads=4,
+        n_layers=4,
     ).to(device)
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
     train(model, dataloader, optimizer, device, epochs=3)
 
-    torch.save(model.state_dict(), "models/v1.1.pth")
+    torch.save(model.state_dict(), "models/v1.2.pth")
 
     def generate(model, tokenizer, prompt="<SONG> <VERSE>", max_new_tokens=50):
         model.eval()
