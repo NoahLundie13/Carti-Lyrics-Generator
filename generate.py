@@ -15,13 +15,10 @@ tokenizer.add_special_tokens(special_tokens)
 tokenizer.model_max_length = 100_000
 
 model = Transformer(
-    vocab_size=len(tokenizer),
-    embed_dim=256,
-    block_size=128,
-    n_heads=4,
+    vocab_size=len(tokenizer), embed_dim=256, block_size=128, n_heads=4, n_layers=4
 ).to(device)
 
-state_dict = torch.load("models/v1.1.pth", map_location=device)
+state_dict = torch.load("models/v1.2.pth", map_location=device)
 model.load_state_dict(state_dict)
 
 
