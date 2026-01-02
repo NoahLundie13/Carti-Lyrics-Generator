@@ -1,4 +1,4 @@
-# Playboi Carti Lyrics Generator
+# Playboi Carti Lyrics Generator 🎵
 
 Generates lyrics using a GPT-2–style Transformer, trained on a compilation of Playboi Carti’s songs. The dataset is cleaned and annotated with special tokens like `<CHORUS>` and `<ADLIB>`.
 
