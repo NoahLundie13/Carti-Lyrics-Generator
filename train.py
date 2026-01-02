@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "mps" if torch.backends.mps.is_available() else "cpu"
 
 tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
@@ -37,13 +37,24 @@ class CartiDataset(Dataset):
 
 
 class Transformer(nn.Module):
-    def __init__(self, vocab_size, embed_dim):
+    def __init__(self, vocab_size, embed_dim, block_size=128):
         super().__init__()
-        self.embed = nn.Embedding(vocab_size, embed_dim)
+        self.tok_embed = nn.Embedding(vocab_size, embed_dim)
+        self.pos_embed = nn.Embedding(block_size, embed_dim)
         self.fc = nn.Linear(embed_dim, vocab_size)
 
     def forward(self, x, targets=None):
-        x = self.embed(x)
+        batch_size, seq_length = x.size()
+        tok_emb = self.tok_embed(x)
+
+        positions = (
+            torch.arange(seq_length, device=x.device)
+            .unsqueeze(0)
+            .expand(batch_size, seq_length)
+        )
+        pos_emb = self.pos_embed(positions)
+
+        x = tok_emb + pos_emb
         logits = self.fc(x)
 
         loss = None
@@ -61,7 +72,7 @@ def train(model, dataloader, optimizer, device, epochs=3):
             x, y = x.to(device), y.to(device)
 
             optimizer.zero_grad()
-            logits, loss = model(x, y)
+            _, loss = model(x, y)
             loss.backward()
             optimizer.step()
 
@@ -80,6 +91,8 @@ model = Transformer(vocab_size=len(tokenizer), embed_dim=256).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
 train(model, dataloader, optimizer, device, epochs=3)
+
+torch.save(model.state_dict(), "v1.0.pth")
 
 
 def generate(model, tokenizer, prompt="<SONG> <VERSE>", max_new_tokens=50):
